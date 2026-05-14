@@ -51,6 +51,15 @@ public class MemberServiceImpl implements IMemberService{
             queryMemberResponse=memberConverter.member2Res(member);
             queryMemberResponse.setCode(SysRetCodeConstants.SUCCESS.getCode());
             queryMemberResponse.setMsg(SysRetCodeConstants.SUCCESS.getMessage());
+            assert queryMemberResponse.getCode() != null : "response code must not be null";
+            assert queryMemberResponse.getMsg() != null : "response msg must not be null";
+            if(SysRetCodeConstants.SUCCESS.getCode().equals(queryMemberResponse.getCode())){
+                assert queryMemberResponse.getId() != null : "member id must not be null on success";
+                assert queryMemberResponse.getUsername() != null : "member username must not be null on success";
+            }
+            log.info("MemberServiceImpl.queryMemberById assertion passed: code={}, msg={}, memberId={}, username={}",
+                    queryMemberResponse.getCode(), queryMemberResponse.getMsg(),
+                    queryMemberResponse.getId(), queryMemberResponse.getUsername());
         }catch (Exception e){
             log.error("MemberServiceImpl.queryMemberById Occur Exception :"+e);
             ExceptionProcessorUtils.wrapperHandlerException(queryMemberResponse,e);
