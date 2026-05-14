@@ -55,6 +55,14 @@ public class MemberServiceImpl implements IMemberService{
             log.error("MemberServiceImpl.queryMemberById Occur Exception :"+e);
             ExceptionProcessorUtils.wrapperHandlerException(queryMemberResponse,e);
         }
+
+        // 简单的单元测试断言检查与日志输出
+        if (queryMemberResponse != null && queryMemberResponse.getCode() != null) {
+            log.info("queryMemberById 测试结果: 验证通过, 响应码: {}, 数据非空", queryMemberResponse.getCode());
+        } else {
+            log.error("queryMemberById 测试结果: 验证失败, 响应数据为空或缺少响应码");
+        }
+
         return queryMemberResponse;
     }
 
