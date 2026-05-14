@@ -1,0 +1,40 @@
+diff --git a/user-service/user-provider/src/main/java/com/gpmall/user/registerVerification/KafKaRegisterSuccMailConsumer.java b/user-service/user-provider/src/main/java/com/gpmall/user/registerVerification/KafKaRegisterSuccMailConsumer.java
+index d41337a..94dc36d 100644
+--- a/user-service/user-provider/src/main/java/com/gpmall/user/registerVerification/KafKaRegisterSuccMailConsumer.java
++++ b/user-service/user-provider/src/main/java/com/gpmall/user/registerVerification/KafKaRegisterSuccMailConsumer.java
+@@ -47,12 +47,18 @@ public class KafKaRegisterSuccMailConsumer {
+             sendMail(userVerifyMap);
+             acknowledgment.acknowledge();//手动提交消息
+         }catch (Exception e){
+-            e.printStackTrace();
++            log.error("消费注册成功邮件消息异常,userVerifyMap:{}", userVerifyMap, e);
+         }
+     }
+ 
+     public void sendMail(Map userVerifyMap){
+         try{
++            if(emailConfig == null || emailConfig.getSubject() == null || emailConfig.getUserMailActiveUrl() == null){
++                throw new IllegalArgumentException("邮件配置不完整");
++            }
++            if(userVerifyMap == null || userVerifyMap.get("email") == null || userVerifyMap.get("username") == null || userVerifyMap.get("key") == null){
++                throw new IllegalArgumentException("注册邮件参数不完整");
++            }
+             MailData mailData = new MailData();
+             mailData.setToAddresss(Arrays.asList((String)userVerifyMap.get("email")));
+             mailData.setSubject(emailConfig.getSubject());
+@@ -60,11 +66,12 @@ public class KafKaRegisterSuccMailConsumer {
+             Map<String,Object> viewObj  = new HashMap<>();
+             viewObj.put("url",emailConfig.getUserMailActiveUrl()+"?username="+userVerifyMap.get("username")+"&email="+userVerifyMap.get("key"));
+             viewObj.put("title",emailConfig.getSubject());
++            mailData.setDataMap(viewObj);
++            mailData.setFileName("activeRegisterInfoHtmlTemplate.html");
+             defaultEmailSender.sendHtmlMailUseTemplate(mailData);
+         }catch (Exception e){
+-            e.printStackTrace();
+-        }finally {
+-
++            log.error("发送注册成功邮件异常,userVerifyMap:{}", userVerifyMap, e);
++            throw new RuntimeException("发送注册成功邮件失败", e);
+         }
+     }
+ }
