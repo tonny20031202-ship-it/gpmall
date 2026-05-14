@@ -53,18 +53,31 @@ public class KafKaRegisterSuccMailConsumer {
 
     public void sendMail(Map userVerifyMap){
         try{
+            if (userVerifyMap == null || !userVerifyMap.containsKey("email") || !userVerifyMap.containsKey("username") || !userVerifyMap.containsKey("key")) {
+                log.error("用户验证数据缺少必要字段: {}", userVerifyMap);
+                return;
+            }
+            if (emailConfig == null || emailConfig.getSubject() == null || emailConfig.getUserMailActiveUrl() == null) {
+                log.error("邮件配置不完整: {}", emailConfig);
+                return;
+            }
+
             MailData mailData = new MailData();
             mailData.setToAddresss(Arrays.asList((String)userVerifyMap.get("email")));
             mailData.setSubject(emailConfig.getSubject());
             mailData.setContent("用户激活邮件");
-            Map<String,Object> viewObj  = new HashMap<>();
-            viewObj.put("url",emailConfig.getUserMailActiveUrl()+"?username="+userVerifyMap.get("username")+"&email="+userVerifyMap.get("key"));
-            viewObj.put("title",emailConfig.getSubject());
-            defaultEmailSender.sendHtmlMailUseTemplate(mailData);
-        }catch (Exception e){
-            e.printStackTrace();
-        }finally {
 
+            Map<String,Object> viewObj = new HashMap<>();
+            viewObj.put("url", emailConfig.getUserMailActiveUrl() + "?username=" + userVerifyMap.get("username") + "&email=" + userVerifyMap.get("key"));
+            viewObj.put("title", emailConfig.getSubject());
+
+            mailData.setDataMap(viewObj);
+            mailData.setFileName(emailConfig.getTemplateFileName());
+
+            defaultEmailSender.sendHtmlMailUseTemplate(mailData);
+            log.info("激活邮件发送成功, 收件人: {}", userVerifyMap.get("email"));
+        }catch (Exception e){
+            log.error("发送激活邮件失败, 用户数据: {}", userVerifyMap, e);
         }
     }
 }
