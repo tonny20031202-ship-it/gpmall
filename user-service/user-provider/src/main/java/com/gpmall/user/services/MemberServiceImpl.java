@@ -47,15 +47,31 @@ public class MemberServiceImpl implements IMemberService{
             if(member==null){
                 queryMemberResponse.setCode(SysRetCodeConstants.DATA_NOT_EXIST.getCode());
                 queryMemberResponse.setMsg(SysRetCodeConstants.DATA_NOT_EXIST.getMessage());
+                log.info("MemberServiceImpl.queryMemberById check result:userId={},code={},msg={}",request.getUserId(),queryMemberResponse.getCode(),queryMemberResponse.getMsg());
+                return queryMemberResponse;
             }
             queryMemberResponse=memberConverter.member2Res(member);
             queryMemberResponse.setCode(SysRetCodeConstants.SUCCESS.getCode());
             queryMemberResponse.setMsg(SysRetCodeConstants.SUCCESS.getMessage());
+            validateQueryMemberResponse(queryMemberResponse);
+            log.info("MemberServiceImpl.queryMemberById check passed:userId={},code={}",queryMemberResponse.getId(),queryMemberResponse.getCode());
         }catch (Exception e){
             log.error("MemberServiceImpl.queryMemberById Occur Exception :"+e);
             ExceptionProcessorUtils.wrapperHandlerException(queryMemberResponse,e);
         }
         return queryMemberResponse;
+    }
+
+    private void validateQueryMemberResponse(QueryMemberResponse queryMemberResponse) {
+        if(queryMemberResponse==null){
+            throw new IllegalStateException("queryMemberResponse is null");
+        }
+        if(!SysRetCodeConstants.SUCCESS.getCode().equals(queryMemberResponse.getCode())){
+            throw new IllegalStateException("queryMemberResponse code is invalid");
+        }
+        if(queryMemberResponse.getId()==null){
+            throw new IllegalStateException("queryMemberResponse data is null");
+        }
     }
 
     @Override
