@@ -43,16 +43,24 @@ public class KafKaRegisterSuccMailConsumer {
     @KafkaListener(id = "",topics = topic,containerFactory = "userRegisterSuccKafkaListenerContainerFactory",groupId = group_id)
     public void receiveInfo(Map userVerifyMap, Acknowledgment acknowledgment){
         try {
-            log.info("收到一条注册消息"+userVerifyMap);
+            log.info("收到一条注册消息: {}", userVerifyMap);
             sendMail(userVerifyMap);
-            acknowledgment.acknowledge();//手动提交消息
+            acknowledgment.acknowledge();
         }catch (Exception e){
-            e.printStackTrace();
+            log.error("处理注册成功消息失败，userVerifyMap: {}", userVerifyMap, e);
         }
     }
 
     public void sendMail(Map userVerifyMap){
         try{
+            if (emailConfig == null || emailConfig.getSubject() == null || emailConfig.getUserMailActiveUrl() == null) {
+                log.error("邮件配置缺失，请检查 emailConfig 配置");
+                return;
+            }
+            if (userVerifyMap == null || userVerifyMap.get("email") == null || userVerifyMap.get("username") == null || userVerifyMap.get("key") == null) {
+                log.error("用户验证信息缺失，userVerifyMap: {}", userVerifyMap);
+                return;
+            }
             MailData mailData = new MailData();
             mailData.setToAddresss(Arrays.asList((String)userVerifyMap.get("email")));
             mailData.setSubject(emailConfig.getSubject());
@@ -60,11 +68,11 @@ public class KafKaRegisterSuccMailConsumer {
             Map<String,Object> viewObj  = new HashMap<>();
             viewObj.put("url",emailConfig.getUserMailActiveUrl()+"?username="+userVerifyMap.get("username")+"&email="+userVerifyMap.get("key"));
             viewObj.put("title",emailConfig.getSubject());
+            mailData.setDataMap(viewObj);
+            mailData.setFileName("registerSuccess.ftl");
             defaultEmailSender.sendHtmlMailUseTemplate(mailData);
         }catch (Exception e){
-            e.printStackTrace();
-        }finally {
-
+            log.error("发送注册成功邮件失败，userVerifyMap: {}", userVerifyMap, e);
         }
     }
 }
