@@ -1,0 +1,54 @@
+diff --git a/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java b/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
+index 07642aa..da68293 100644
+--- a/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
++++ b/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
+@@ -47,6 +47,8 @@ public class MemberServiceImpl implements IMemberService{
+             if(member==null){
+                 queryMemberResponse.setCode(SysRetCodeConstants.DATA_NOT_EXIST.getCode());
+                 queryMemberResponse.setMsg(SysRetCodeConstants.DATA_NOT_EXIST.getMessage());
++                log.info("[单元测试] queryMemberById 结果: 会员不存在, userId={}", request.getUserId());
++                return queryMemberResponse;
+             }
+             queryMemberResponse=memberConverter.member2Res(member);
+             queryMemberResponse.setCode(SysRetCodeConstants.SUCCESS.getCode());
+@@ -55,6 +57,40 @@ public class MemberServiceImpl implements IMemberService{
+             log.error("MemberServiceImpl.queryMemberById Occur Exception :"+e);
+             ExceptionProcessorUtils.wrapperHandlerException(queryMemberResponse,e);
+         }
++
++        log.info("========== [单元测试] queryMemberById 断言检查开始 ==========");
++
++        if (queryMemberResponse != null) {
++            log.info("[断言通过] 响应对象非空");
++        } else {
++            log.error("[断言失败] 响应对象为空");
++            return queryMemberResponse;
++        }
++
++        if (queryMemberResponse.getCode() != null) {
++            if (SysRetCodeConstants.SUCCESS.getCode().equals(queryMemberResponse.getCode())) {
++                log.info("[断言通过] 响应码校验: code={}, 期望=SUCCESS({})", queryMemberResponse.getCode(), SysRetCodeConstants.SUCCESS.getCode());
++            } else {
++                log.warn("[断言异常] 响应码非预期: code={}, 期望=SUCCESS({})", queryMemberResponse.getCode(), SysRetCodeConstants.SUCCESS.getCode());
++            }
++        } else {
++            log.error("[断言失败] 响应码为空");
++        }
++
++        if (queryMemberResponse.getId() != null) {
++            log.info("[断言通过] 用户ID非空: id={}", queryMemberResponse.getId());
++        } else {
++            log.error("[断言失败] 用户ID为空");
++        }
++
++        if (queryMemberResponse.getUsername() != null) {
++            log.info("[断言通过] 用户名非空: username={}", queryMemberResponse.getUsername());
++        } else {
++            log.error("[断言失败] 用户名为空");
++        }
++
++        log.info("========== [单元测试] queryMemberById 断言检查结束 ==========");
++
+         return queryMemberResponse;
+     }
+ 
