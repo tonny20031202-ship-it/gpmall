@@ -1,0 +1,25 @@
+diff --git a/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java b/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
+index 07642aa..2c9548f 100644
+--- a/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
++++ b/user-service/user-provider/src/main/java/com/gpmall/user/services/MemberServiceImpl.java
+@@ -51,6 +51,20 @@ public class MemberServiceImpl implements IMemberService{
+             queryMemberResponse=memberConverter.member2Res(member);
+             queryMemberResponse.setCode(SysRetCodeConstants.SUCCESS.getCode());
+             queryMemberResponse.setMsg(SysRetCodeConstants.SUCCESS.getMessage());
++            
++            log.info("MemberServiceImpl.queryMemberById request userId: {}, response code: {}, response msg: {}", 
++                     request.getUserId(), queryMemberResponse.getCode(), queryMemberResponse.getMsg());
++            if (member != null) {
++                log.info("MemberServiceImpl.queryMemberById member info - id: {}, username: {}, phone: {}", 
++                         member.getId(), member.getUsername(), member.getPhone());
++            }
++            
++            assert queryMemberResponse.getCode() != null : "Response code must not be null";
++            assert queryMemberResponse.getMsg() != null : "Response message must not be null";
++            if (member != null) {
++                assert queryMemberResponse.getId() != null : "Member id must not be null when member exists";
++            }
++            
+         }catch (Exception e){
+             log.error("MemberServiceImpl.queryMemberById Occur Exception :"+e);
+             ExceptionProcessorUtils.wrapperHandlerException(queryMemberResponse,e);
