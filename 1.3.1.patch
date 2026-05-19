@@ -1,0 +1,319 @@
+diff --git a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+index ae48697..4b0445a 100644
+--- a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
++++ b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+@@ -1,6 +1,5 @@
+ package com.gpmall.search.services;
+ 
+-
+ import com.google.common.collect.Lists;
+ import com.gpmall.search.ProductSearchService;
+ import com.gpmall.search.constant.PageInfo;
+@@ -12,23 +11,22 @@ import com.gpmall.search.dto.SearchResponse;
+ import com.gpmall.search.entity.ItemDocument;
+ import com.gpmall.search.repository.ProductRepository;
+ import com.gpmall.search.utils.ExceptionProcessorUtils;
+-import jdk.nashorn.internal.runtime.GlobalConstants;
+ import lombok.extern.slf4j.Slf4j;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.dubbo.config.annotation.Service;
+ import org.elasticsearch.index.query.BoolQueryBuilder;
+ import org.elasticsearch.index.query.QueryBuilders;
++import org.elasticsearch.index.query.RangeQueryBuilder;
+ import org.redisson.api.RScoredSortedSet;
+ import org.redisson.api.RedissonClient;
+-import org.springframework.beans.BeanUtils;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.PageRequest;
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.data.domain.Sort;
+ 
++import java.lang.reflect.Method;
+ import java.util.ArrayList;
+-import java.util.Arrays;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Objects;
+@@ -51,118 +49,202 @@ public class ProductSearchServiceImpl implements ProductSearchService {
+     @Autowired
+     ProductConverter productConverter;
+ 
+-	@Autowired
+-	private RedissonClient redissonClient;
++    @Autowired
++    private RedissonClient redissonClient;
+ 
+     @Override
+     public SearchResponse search(SearchRequest request) {
+-
+         SearchResponse response = new SearchResponse();
+-		try {
+-            request.requestCheck();
+-            //统计搜索热词
+-			staticsSearchHotWord(request);
+-            BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
+-            if (request.getPriceGt() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
+-            }
+-            if (request.getPriceLte() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
+-            }
+-            Sort sort = null;
+-            if ("1".equals(request.getSort())) {
+-                sort = new Sort(Sort.Direction.ASC, "price");
+-            } else if ("-1".equals(request.getSort())) {
+-                sort = new Sort(Sort.Direction.DESC, "price");
+-            }
+-            Pageable pageable = new PageRequest(request.getCurrentPage() - 1, request.getPageSize());
+-            if (sort != null) {
+-                pageable = new PageRequest(request.getCurrentPage() - 1, pageable.getPageSize(), sort);
++        try {
++            SearchQueryContext queryContext = buildSearchQuery(request);
++            if (!queryContext.hasCondition()) {
++                response.setTotal(0L);
++                response.ok(Collections.emptyList());
++                return response;
+             }
+-            Iterable<ItemDocument> elasticRes =
+-                    productRepository.search(boolQueryBuilder, pageable);
++            staticsSearchHotWord(request);
++            Pageable pageable = buildPageable(request);
++            Page<ItemDocument> elasticRes = productRepository.search(queryContext.getBoolQueryBuilder(), pageable);
+             ArrayList<ItemDocument> itemDocuments = Lists.newArrayList(elasticRes);
+-
+             List<ProductDto> productDtos = productConverter.items2Dto(itemDocuments);
++            response.setTotal(elasticRes.getTotalElements());
+             response.ok(productDtos);
+-        }catch (Exception e){
++        } catch (Exception e) {
+             e.printStackTrace();
+             log.error("ProductSearchServiceImpl.search Occur Exception :" + e);
+-            ExceptionProcessorUtils.wrapperHandlerException(response,e);
++            ExceptionProcessorUtils.wrapperHandlerException(response, e);
+         }
+         return response;
+     }
+ 
+-
+-	@Override
++    @Override
+     public SearchResponse fuzzySearch(SearchRequest request) {
+         SearchResponse response = new SearchResponse();
+         try {
+             request.requestCheck();
+-			//统计搜索热词
+-			staticsSearchHotWord(request);
+-            // 分页
+-			PageInfo pageInfo=new PageInfo();
+-			pageInfo.setPageNumber(request.getCurrentPage());
+-			pageInfo.setPageSize(request.getPageSize());
+-			pageInfo.setSort(new Sort(Sort.Direction.DESC,request.getSort()));
++            staticsSearchHotWord(request);
++            PageInfo pageInfo = new PageInfo();
++            pageInfo.setPageNumber(request.getCurrentPage());
++            pageInfo.setPageSize(request.getPageSize());
++            pageInfo.setSort(new Sort(Sort.Direction.DESC, request.getSort()));
+             Page<ItemDocument> elasticRes =
+-                    productRepository.search(QueryBuilders.matchQuery("title",request.getKeyword()),pageInfo);
++                    productRepository.search(QueryBuilders.matchQuery("title", request.getKeyword()), pageInfo);
+             ArrayList<ItemDocument> itemDocuments = Lists.newArrayList(elasticRes);
+             List<ProductDto> productDtos = productConverter.items2Dto(itemDocuments);
+             response.setTotal(elasticRes.getTotalElements());
+             response.ok(productDtos);
+-        }catch (Exception e){
++        } catch (Exception e) {
+             e.printStackTrace();
+             log.error("ProductSearchServiceImpl.fuzzySearch Occur Exception :" + e);
+-            ExceptionProcessorUtils.wrapperHandlerException(response,e);
++            ExceptionProcessorUtils.wrapperHandlerException(response, e);
+         }
+         return response;
+     }
+ 
+-	/**
+-	 * 统计搜索热词
+-	 * @param request request
+-	 */
+-	private void staticsSearchHotWord(SearchRequest request) {
+-		//搜索词
+-		String keyword = request.getKeyword();
+-		if(StringUtils.isNotEmpty(keyword)){
+-			RScoredSortedSet<Object> scoredSortedSet = redissonClient.getScoredSortedSet(getSearchHotWordRedisKey());
+-			Double score = scoredSortedSet.getScore(keyword);
+-			if(score!=null){
+-				scoredSortedSet.addAndGetRank(score+1.0,keyword);
+-			}else{
+-				scoredSortedSet.addScore(keyword,1);
+-
+-			}
+-
+-		}
+-	}
++    private SearchQueryContext buildSearchQuery(SearchRequest request) {
++        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
++        boolean hasCondition = false;
++
++        String keyword = request == null ? null : StringUtils.trim(request.getKeyword());
++        if (StringUtils.isNotBlank(keyword)) {
++            boolQueryBuilder.must(QueryBuilders.matchQuery("title", keyword));
++            hasCondition = true;
++        }
++
++        Long categoryId = resolveCategoryId(request);
++        if (categoryId != null) {
++            boolQueryBuilder.filter(QueryBuilders.termQuery("cid", categoryId));
++            hasCondition = true;
++        }
++
++        RangeQueryBuilder priceRangeQuery = buildPriceRangeQuery(request == null ? null : request.getPriceGt(),
++                request == null ? null : request.getPriceLte());
++        if (priceRangeQuery != null) {
++            boolQueryBuilder.filter(priceRangeQuery);
++            hasCondition = true;
++        }
++
++        return new SearchQueryContext(boolQueryBuilder, hasCondition);
++    }
++
++    private Pageable buildPageable(SearchRequest request) {
++        int currentPage = request == null || request.getCurrentPage() == null || request.getCurrentPage() < 1
++                ? 1 : request.getCurrentPage();
++        int pageSize = request == null || request.getPageSize() == null || request.getPageSize() < 1
++                ? 20 : request.getPageSize();
++        Sort sort = buildSort(request == null ? null : request.getSort());
++        if (sort == null) {
++            return new PageRequest(currentPage - 1, pageSize);
++        }
++        return new PageRequest(currentPage - 1, pageSize, sort);
++    }
++
++    private Sort buildSort(String sortValue) {
++        if ("1".equals(sortValue)) {
++            return new Sort(Sort.Direction.ASC, "price");
++        }
++        if ("-1".equals(sortValue)) {
++            return new Sort(Sort.Direction.DESC, "price");
++        }
++        return null;
++    }
++
++    private RangeQueryBuilder buildPriceRangeQuery(Integer priceGt, Integer priceLte) {
++        if (priceGt == null && priceLte == null) {
++            return null;
++        }
++        RangeQueryBuilder rangeQueryBuilder = QueryBuilders.rangeQuery("price");
++        if (priceGt != null) {
++            rangeQueryBuilder.gt(priceGt);
++        }
++        if (priceLte != null) {
++            rangeQueryBuilder.lte(priceLte);
++        }
++        return rangeQueryBuilder;
++    }
++
++    private Long resolveCategoryId(SearchRequest request) {
++        if (request == null) {
++            return null;
++        }
++        Long categoryId = readLongValue(request, "getCid");
++        if (categoryId != null) {
++            return categoryId;
++        }
++        categoryId = readLongValue(request, "getCategoryId");
++        if (categoryId != null) {
++            return categoryId;
++        }
++        return readLongValue(request, "getCategory");
++    }
++
++    private Long readLongValue(Object target, String methodName) {
++        try {
++            Method method = target.getClass().getMethod(methodName);
++            Object value = method.invoke(target);
++            if (value instanceof Number) {
++                return ((Number) value).longValue();
++            }
++            if (value instanceof String && StringUtils.isNotBlank((String) value)) {
++                return Long.valueOf(StringUtils.trim((String) value));
++            }
++        } catch (Exception e) {
++            return null;
++        }
++        return null;
++    }
++
++    private void staticsSearchHotWord(SearchRequest request) {
++        String keyword = request == null ? null : request.getKeyword();
++        if (StringUtils.isNotEmpty(keyword)) {
++            RScoredSortedSet<Object> scoredSortedSet = redissonClient.getScoredSortedSet(getSearchHotWordRedisKey());
++            Double score = scoredSortedSet.getScore(keyword);
++            if (score != null) {
++                scoredSortedSet.addAndGetRank(score + 1.0, keyword);
++            } else {
++                scoredSortedSet.addScore(keyword, 1);
++            }
++        }
++    }
+ 
+     @Override
+-	@SuppressWarnings("unchecked")
++    @SuppressWarnings("unchecked")
+     public SearchResponse hotProductKeyword() {
+-    	//商品热门搜索关键字
+-		//获取到分数第一的 搜索词
+-		SearchResponse response = new SearchResponse();
+-		try {
+-			RScoredSortedSet<Object> scoredSortedSet = redissonClient.getScoredSortedSet(getSearchHotWordRedisKey());
+-			Object first = scoredSortedSet.first();
+-			if(!Objects.isNull(first)){
+-				response.ok(Collections.singletonList(first));
+-			}
+-		}catch (Exception e){
+-			e.printStackTrace();
+-			log.error("ProductSearchServiceImpl.hotProductKeyword Occur Exception :" + e);
+-			ExceptionProcessorUtils.wrapperHandlerException(response,e);
+-		}
+-
+-		return response;
++        SearchResponse response = new SearchResponse();
++        try {
++            RScoredSortedSet<Object> scoredSortedSet = redissonClient.getScoredSortedSet(getSearchHotWordRedisKey());
++            Object first = scoredSortedSet.first();
++            if (!Objects.isNull(first)) {
++                response.ok(Collections.singletonList(first));
++            }
++        } catch (Exception e) {
++            e.printStackTrace();
++            log.error("ProductSearchServiceImpl.hotProductKeyword Occur Exception :" + e);
++            ExceptionProcessorUtils.wrapperHandlerException(response, e);
++        }
++
++        return response;
+     }
+ 
+     private String getSearchHotWordRedisKey() {
+-		return SearchConstants.SEARCH_HOT_WORD_CACHE_KEY;
+-	}
++        return SearchConstants.SEARCH_HOT_WORD_CACHE_KEY;
++    }
++
++    private static final class SearchQueryContext {
++        private final BoolQueryBuilder boolQueryBuilder;
++        private final boolean hasCondition;
++
++        private SearchQueryContext(BoolQueryBuilder boolQueryBuilder, boolean hasCondition) {
++            this.boolQueryBuilder = boolQueryBuilder;
++            this.hasCondition = hasCondition;
++        }
++
++        private BoolQueryBuilder getBoolQueryBuilder() {
++            return boolQueryBuilder;
++        }
++
++        private boolean hasCondition() {
++            return hasCondition;
++        }
++    }
+ }
