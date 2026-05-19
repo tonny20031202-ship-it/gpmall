@@ -15,4 +15,6 @@ import java.util.List;
 public class CartListByIdResponse extends AbstractResponse {
 
     private List<CartProductDto> cartProductDtos;
+    private java.math.BigDecimal cartTotal;
+    private Long cartNum;
 }

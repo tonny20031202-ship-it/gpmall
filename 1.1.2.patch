@@ -1,0 +1,39 @@
+diff --git a/shopping-service/shopping-api/src/main/java/com/gpmall/shopping/dto/CartListByIdResponse.java b/shopping-service/shopping-api/src/main/java/com/gpmall/shopping/dto/CartListByIdResponse.java
+index 7d8c4b8..2435666 100644
+--- a/shopping-service/shopping-api/src/main/java/com/gpmall/shopping/dto/CartListByIdResponse.java
++++ b/shopping-service/shopping-api/src/main/java/com/gpmall/shopping/dto/CartListByIdResponse.java
+@@ -15,4 +15,6 @@ import java.util.List;
+ public class CartListByIdResponse extends AbstractResponse {
+ 
+     private List<CartProductDto> cartProductDtos;
++    private java.math.BigDecimal cartTotal;
++    private Long cartNum;
+ }
+diff --git a/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java b/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
+index 0a02a87..3a66569 100644
+--- a/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
++++ b/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
+@@ -50,10 +50,19 @@ public class CartServiceImpl implements ICartService {
+         response.setMsg(ShoppingRetCode.SUCCESS.getMessage());
+         try{
+             Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
+-            items.values().forEach(obj ->{
+-               CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
+-               productDtos.add(cartProductDto);
+-            });
++            java.math.BigDecimal cartTotal = java.math.BigDecimal.ZERO;
++            long cartNum = 0L;
++            for (Object obj : items.values()) {
++                CartProductDto cartProductDto = JSONObject.parseObject(obj.toString(), CartProductDto.class);
++                productDtos.add(cartProductDto);
++                if ("true".equals(cartProductDto.getChecked())) {
++                    java.math.BigDecimal price = cartProductDto.getSalePrice().multiply(java.math.BigDecimal.valueOf(cartProductDto.getProductNum()));
++                    cartTotal = cartTotal.add(price);
++                    cartNum += cartProductDto.getProductNum();
++                }
++            }
++            response.setCartTotal(cartTotal);
++            response.setCartNum(cartNum);
+             response.setCartProductDtos(productDtos);
+         }catch (Exception e){
+             log.error("CartServiceImpl.getCartListById Occur Exception :"+e);

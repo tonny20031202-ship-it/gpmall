@@ -50,10 +50,19 @@ public class CartServiceImpl implements ICartService {
         response.setMsg(ShoppingRetCode.SUCCESS.getMessage());
         try{
             Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
-            items.values().forEach(obj ->{
-               CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
-               productDtos.add(cartProductDto);
-            });
+            java.math.BigDecimal cartTotal = java.math.BigDecimal.ZERO;
+            long cartNum = 0L;
+            for (Object obj : items.values()) {
+                CartProductDto cartProductDto = JSONObject.parseObject(obj.toString(), CartProductDto.class);
+                productDtos.add(cartProductDto);
+                if ("true".equals(cartProductDto.getChecked())) {
+                    java.math.BigDecimal price = cartProductDto.getSalePrice().multiply(java.math.BigDecimal.valueOf(cartProductDto.getProductNum()));
+                    cartTotal = cartTotal.add(price);
+                    cartNum += cartProductDto.getProductNum();
+                }
+            }
+            response.setCartTotal(cartTotal);
+            response.setCartNum(cartNum);
             response.setCartProductDtos(productDtos);
         }catch (Exception e){
             log.error("CartServiceImpl.getCartListById Occur Exception :"+e);
