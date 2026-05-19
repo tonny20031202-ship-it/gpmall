@@ -58,30 +58,52 @@ public class ProductSearchServiceImpl implements ProductSearchService {
     public SearchResponse search(SearchRequest request) {
 
         SearchResponse response = new SearchResponse();
-		try {
+        try {
             request.requestCheck();
             //统计搜索热词
 			staticsSearchHotWord(request);
+            
+            // 构建 BoolQueryBuilder
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
-            if (request.getPriceGt() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
+            
+            // 1. 关键词查询 - 使用 must（需要计算评分）
+            if (StringUtils.isNotBlank(request.getKeyword())) {
+                boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
             }
-            if (request.getPriceLte() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
+            
+            // 2. 分类查询 - 使用 filter（不计算评分，性能更好）
+            if (request.getCid() != null) {
+                boolQueryBuilder.filter(QueryBuilders.termQuery("cid", request.getCid()));
             }
+            
+            // 3. 价格区间查询 - 使用 filter（不计算评分，性能更好）
+            if (request.getPriceGt() != null || request.getPriceLte() != null) {
+                var rangeQuery = QueryBuilders.rangeQuery("price");
+                if (request.getPriceGt() != null) {
+                    rangeQuery.gt(request.getPriceGt());
+                }
+                if (request.getPriceLte() != null) {
+                    rangeQuery.lte(request.getPriceLte());
+                }
+                boolQueryBuilder.filter(rangeQuery);
+            }
+            
+            // 4. 排序
             Sort sort = null;
             if ("1".equals(request.getSort())) {
                 sort = new Sort(Sort.Direction.ASC, "price");
             } else if ("-1".equals(request.getSort())) {
                 sort = new Sort(Sort.Direction.DESC, "price");
             }
+            
+            // 分页
             Pageable pageable = new PageRequest(request.getCurrentPage() - 1, request.getPageSize());
             if (sort != null) {
                 pageable = new PageRequest(request.getCurrentPage() - 1, pageable.getPageSize(), sort);
             }
-            Iterable<ItemDocument> elasticRes =
-                    productRepository.search(boolQueryBuilder, pageable);
+            
+            // 执行查询
+            Iterable<ItemDocument> elasticRes = productRepository.search(boolQueryBuilder, pageable);
             ArrayList<ItemDocument> itemDocuments = Lists.newArrayList(elasticRes);
 
             List<ProductDto> productDtos = productConverter.items2Dto(itemDocuments);
@@ -102,13 +124,48 @@ public class ProductSearchServiceImpl implements ProductSearchService {
             request.requestCheck();
 			//统计搜索热词
 			staticsSearchHotWord(request);
+            
+            // 构建 BoolQueryBuilder
+            BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+            
+            // 关键词查询 - 使用 must
+            if (StringUtils.isNotBlank(request.getKeyword())) {
+                boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
+            }
+            
+            // 分类查询 - 使用 filter
+            if (request.getCid() != null) {
+                boolQueryBuilder.filter(QueryBuilders.termQuery("cid", request.getCid()));
+            }
+            
+            // 价格区间查询 - 使用 filter
+            if (request.getPriceGt() != null || request.getPriceLte() != null) {
+                var rangeQuery = QueryBuilders.rangeQuery("price");
+                if (request.getPriceGt() != null) {
+                    rangeQuery.gt(request.getPriceGt());
+                }
+                if (request.getPriceLte() != null) {
+                    rangeQuery.lte(request.getPriceLte());
+                }
+                boolQueryBuilder.filter(rangeQuery);
+            }
+            
+            // 排序
+            Sort sort = null;
+            if (StringUtils.isNotBlank(request.getSort())) {
+                sort = new Sort(Sort.Direction.DESC, request.getSort());
+            }
+            
             // 分页
-			PageInfo pageInfo=new PageInfo();
-			pageInfo.setPageNumber(request.getCurrentPage());
-			pageInfo.setPageSize(request.getPageSize());
-			pageInfo.setSort(new Sort(Sort.Direction.DESC,request.getSort()));
-            Page<ItemDocument> elasticRes =
-                    productRepository.search(QueryBuilders.matchQuery("title",request.getKeyword()),pageInfo);
+            PageInfo pageInfo = new PageInfo();
+            pageInfo.setPageNumber(request.getCurrentPage());
+            pageInfo.setPageSize(request.getPageSize());
+            if (sort != null) {
+                pageInfo.setSort(sort);
+            }
+            
+            // 执行查询
+            Page<ItemDocument> elasticRes = productRepository.search(boolQueryBuilder, pageInfo);
             ArrayList<ItemDocument> itemDocuments = Lists.newArrayList(elasticRes);
             List<ProductDto> productDtos = productConverter.items2Dto(itemDocuments);
             response.setTotal(elasticRes.getTotalElements());
