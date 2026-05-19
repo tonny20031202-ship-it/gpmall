@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
 public class SearchRequest extends AbstractRequest {
 
     private String keyword;
+    private Long cid;
     private Integer currentPage;
     private Integer pageSize;
     private String sort;
@@ -26,7 +27,7 @@ public class SearchRequest extends AbstractRequest {
 
     @Override
     public void requestCheck() {
-        if(StringUtils.isBlank(keyword)){
+        if(StringUtils.isBlank(keyword) && cid == null){
             throw new ValidateException(
                     SearchRetCode.REQUEST_CHECK_FAILURE.getCode(),
                     SearchRetCode.REQUEST_CHECK_FAILURE.getMsg());

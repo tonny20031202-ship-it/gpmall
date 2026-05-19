@@ -63,13 +63,26 @@ public class ProductSearchServiceImpl implements ProductSearchService {
             //统计搜索热词
 			staticsSearchHotWord(request);
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
-            if (request.getPriceGt() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
+            
+            if (StringUtils.isNotBlank(request.getKeyword())) {
+                boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
             }
-            if (request.getPriceLte() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
+            
+            if (request.getCid() != null) {
+                boolQueryBuilder.filter(QueryBuilders.termQuery("cid", request.getCid()));
             }
+            
+            if (request.getPriceGt() != null || request.getPriceLte() != null) {
+                org.elasticsearch.index.query.RangeQueryBuilder priceRange = QueryBuilders.rangeQuery("price");
+                if (request.getPriceGt() != null) {
+                    priceRange.gt(request.getPriceGt());
+                }
+                if (request.getPriceLte() != null) {
+                    priceRange.lte(request.getPriceLte());
+                }
+                boolQueryBuilder.filter(priceRange);
+            }
+            
             Sort sort = null;
             if ("1".equals(request.getSort())) {
                 sort = new Sort(Sort.Direction.ASC, "price");

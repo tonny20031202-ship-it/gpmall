@@ -1,0 +1,57 @@
+diff --git a/search-service/search-api/src/main/java/com/gpmall/search/dto/SearchRequest.java b/search-service/search-api/src/main/java/com/gpmall/search/dto/SearchRequest.java
+index fdaca62..abf25b7 100644
+--- a/search-service/search-api/src/main/java/com/gpmall/search/dto/SearchRequest.java
++++ b/search-service/search-api/src/main/java/com/gpmall/search/dto/SearchRequest.java
+@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
+ public class SearchRequest extends AbstractRequest {
+ 
+     private String keyword;
++    private Long cid;
+     private Integer currentPage;
+     private Integer pageSize;
+     private String sort;
+@@ -26,7 +27,7 @@ public class SearchRequest extends AbstractRequest {
+ 
+     @Override
+     public void requestCheck() {
+-        if(StringUtils.isBlank(keyword)){
++        if(StringUtils.isBlank(keyword) && cid == null){
+             throw new ValidateException(
+                     SearchRetCode.REQUEST_CHECK_FAILURE.getCode(),
+                     SearchRetCode.REQUEST_CHECK_FAILURE.getMsg());
+diff --git a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+index ae48697..8a0a12b 100644
+--- a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
++++ b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+@@ -63,13 +63,26 @@ public class ProductSearchServiceImpl implements ProductSearchService {
+             //统计搜索热词
+ 			staticsSearchHotWord(request);
+             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
+-            if (request.getPriceGt() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
++            
++            if (StringUtils.isNotBlank(request.getKeyword())) {
++                boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
+             }
+-            if (request.getPriceLte() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
++            
++            if (request.getCid() != null) {
++                boolQueryBuilder.filter(QueryBuilders.termQuery("cid", request.getCid()));
+             }
++            
++            if (request.getPriceGt() != null || request.getPriceLte() != null) {
++                org.elasticsearch.index.query.RangeQueryBuilder priceRange = QueryBuilders.rangeQuery("price");
++                if (request.getPriceGt() != null) {
++                    priceRange.gt(request.getPriceGt());
++                }
++                if (request.getPriceLte() != null) {
++                    priceRange.lte(request.getPriceLte());
++                }
++                boolQueryBuilder.filter(priceRange);
++            }
++            
+             Sort sort = null;
+             if ("1".equals(request.getSort())) {
+                 sort = new Sort(Sort.Direction.ASC, "price");
