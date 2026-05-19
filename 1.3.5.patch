@@ -1,0 +1,84 @@
+diff --git a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+index ae48697..a9d7b0e 100644
+--- a/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
++++ b/search-service/search-provider/src/main/java/com/gpmall/search/services/ProductSearchServiceImpl.java
+@@ -60,26 +60,13 @@ public class ProductSearchServiceImpl implements ProductSearchService {
+         SearchResponse response = new SearchResponse();
+ 		try {
+             request.requestCheck();
+-            //统计搜索热词
+-			staticsSearchHotWord(request);
+-            BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
+-            if (request.getPriceGt() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
+-            }
+-            if (request.getPriceLte() != null) {
+-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
+-            }
+-            Sort sort = null;
+-            if ("1".equals(request.getSort())) {
+-                sort = new Sort(Sort.Direction.ASC, "price");
+-            } else if ("-1".equals(request.getSort())) {
+-                sort = new Sort(Sort.Direction.DESC, "price");
+-            }
+-            Pageable pageable = new PageRequest(request.getCurrentPage() - 1, request.getPageSize());
+-            if (sort != null) {
+-                pageable = new PageRequest(request.getCurrentPage() - 1, pageable.getPageSize(), sort);
+-            }
++            staticsSearchHotWord(request);
++
++            BoolQueryBuilder boolQueryBuilder = buildSearchQuery(request);
++
++            Sort sort = buildSort(request);
++            Pageable pageable = buildPageable(request, sort);
++
+             Iterable<ItemDocument> elasticRes =
+                     productRepository.search(boolQueryBuilder, pageable);
+             ArrayList<ItemDocument> itemDocuments = Lists.newArrayList(elasticRes);
+@@ -94,6 +81,45 @@ public class ProductSearchServiceImpl implements ProductSearchService {
+         return response;
+     }
+ 
++    private BoolQueryBuilder buildSearchQuery(SearchRequest request) {
++        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
++
++        if (StringUtils.isNotBlank(request.getKeyword())) {
++            boolQuery.must(QueryBuilders.matchQuery("title", request.getKeyword()));
++        }
++
++        if (request.getCid() != null) {
++            boolQuery.filter(QueryBuilders.termQuery("cid", request.getCid()));
++        }
++
++        if (request.getPriceGt() != null) {
++            boolQuery.filter(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
++        }
++        if (request.getPriceLte() != null) {
++            boolQuery.filter(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
++        }
++
++        return boolQuery;
++    }
++
++    private Sort buildSort(SearchRequest request) {
++        if ("1".equals(request.getSort())) {
++            return Sort.by(Sort.Direction.ASC, "price");
++        } else if ("-1".equals(request.getSort())) {
++            return Sort.by(Sort.Direction.DESC, "price");
++        }
++        return null;
++    }
++
++    private Pageable buildPageable(SearchRequest request, Sort sort) {
++        int currentPage = request.getCurrentPage() != null ? request.getCurrentPage() : 1;
++        int pageSize = request.getPageSize() != null ? request.getPageSize() : 10;
++        if (sort != null) {
++            return PageRequest.of(currentPage - 1, pageSize, sort);
++        }
++        return PageRequest.of(currentPage - 1, pageSize);
++    }
++
+ 
+ 	@Override
+     public SearchResponse fuzzySearch(SearchRequest request) {
