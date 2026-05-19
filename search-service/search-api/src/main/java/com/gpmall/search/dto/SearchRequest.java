@@ -23,6 +23,7 @@ public class SearchRequest extends AbstractRequest {
     private String sort;
     private Integer priceGt;
     private Integer priceLte;
+    private Long cid;
 
     @Override
     public void requestCheck() {

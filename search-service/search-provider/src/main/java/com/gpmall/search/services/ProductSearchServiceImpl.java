@@ -63,13 +63,30 @@ public class ProductSearchServiceImpl implements ProductSearchService {
             //统计搜索热词
 			staticsSearchHotWord(request);
             BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
-            boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
-            if (request.getPriceGt() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").gt(request.getPriceGt()));
+
+            // 关键词查询：使用 must，需要参与评分
+            if (StringUtils.isNotBlank(request.getKeyword())) {
+                boolQueryBuilder.must(QueryBuilders.matchQuery("title", request.getKeyword()));
             }
-            if (request.getPriceLte() != null) {
-                boolQueryBuilder.must(QueryBuilders.rangeQuery("price").lte(request.getPriceLte()));
+
+            // 分类查询：使用 filter，不需要评分，性能更好
+            if (request.getCid() != null) {
+                boolQueryBuilder.filter(QueryBuilders.termQuery("cid", request.getCid()));
             }
+
+            // 价格区间查询：使用 filter，不需要评分
+            if (request.getPriceGt() != null || request.getPriceLte() != null) {
+                var rangeQuery = QueryBuilders.rangeQuery("price");
+                if (request.getPriceGt() != null) {
+                    rangeQuery.gt(request.getPriceGt());
+                }
+                if (request.getPriceLte() != null) {
+                    rangeQuery.lte(request.getPriceLte());
+                }
+                boolQueryBuilder.filter(rangeQuery);
+            }
+
+            // 排序
             Sort sort = null;
             if ("1".equals(request.getSort())) {
                 sort = new Sort(Sort.Direction.ASC, "price");
