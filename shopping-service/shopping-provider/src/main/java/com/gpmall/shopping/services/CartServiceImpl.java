@@ -52,6 +52,13 @@ public class CartServiceImpl implements ICartService {
             Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
             items.values().forEach(obj ->{
                CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
+               // 使用 BigDecimal 精确计算商品小计
+               if(cartProductDto.getSalePrice()!=null&&cartProductDto.getProductNum()!=null){
+                   BigDecimal subtotal=cartProductDto.getSalePrice().multiply(
+                           BigDecimal.valueOf(cartProductDto.getProductNum())
+                   );
+                   cartProductDto.setSubtotal(subtotal);
+               }
                productDtos.add(cartProductDto);
             });
             response.setCartProductDtos(productDtos);
@@ -75,6 +82,13 @@ public class CartServiceImpl implements ICartService {
                 String cartItemJson=redissonClient.getMap(generatorCartItemKey(request.getUserId())).get(request.getItemId()).toString();
                 CartProductDto cartProductDto=JSON.parseObject(cartItemJson,CartProductDto.class);
                 cartProductDto.setProductNum(cartProductDto.getProductNum().longValue()+request.getNum().longValue());
+                // 重新计算小计
+                if(cartProductDto.getSalePrice()!=null&&cartProductDto.getProductNum()!=null){
+                    BigDecimal subtotal=cartProductDto.getSalePrice().multiply(
+                            BigDecimal.valueOf(cartProductDto.getProductNum())
+                    );
+                    cartProductDto.setSubtotal(subtotal);
+                }
                 redissonClient.getMap(generatorCartItemKey(request.getUserId())).put(request.getItemId(),JSON.toJSON(cartProductDto).toString());
                 return response;
             }
@@ -83,6 +97,13 @@ public class CartServiceImpl implements ICartService {
                 CartProductDto cartProductDto=CartItemConverter.item2Dto(item);
                 cartProductDto.setChecked("true");
                 cartProductDto.setProductNum(request.getNum().longValue());
+                // 计算小计
+                if(cartProductDto.getSalePrice()!=null&&cartProductDto.getProductNum()!=null){
+                    BigDecimal subtotal=cartProductDto.getSalePrice().multiply(
+                            BigDecimal.valueOf(cartProductDto.getProductNum())
+                    );
+                    cartProductDto.setSubtotal(subtotal);
+                }
                 redissonClient.getMap(generatorCartItemKey(request.getUserId())).put(request.getItemId(),JSON.toJSON(cartProductDto).toString());
                 return response;
             }
@@ -107,6 +128,13 @@ public class CartServiceImpl implements ICartService {
                 CartProductDto cartProductDto=JSON.parseObject(item.toString(),CartProductDto.class);
                 cartProductDto.setChecked(request.getChecked());
                 cartProductDto.setProductNum(request.getNum().longValue());
+                // 重新计算小计
+                if(cartProductDto.getSalePrice()!=null&&cartProductDto.getProductNum()!=null){
+                    BigDecimal subtotal=cartProductDto.getSalePrice().multiply(
+                            BigDecimal.valueOf(cartProductDto.getProductNum())
+                    );
+                    cartProductDto.setSubtotal(subtotal);
+                }
                 itemMap.put(request.getItemId(),JSON.toJSON(cartProductDto));
             }
         }catch (Exception e){

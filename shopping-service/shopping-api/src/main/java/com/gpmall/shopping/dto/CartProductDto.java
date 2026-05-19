@@ -28,4 +28,6 @@ public class CartProductDto implements Serializable {
     private String productName;
 
     private String productImg;
+
+    private BigDecimal subtotal;
 }
