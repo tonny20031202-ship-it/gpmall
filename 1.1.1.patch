@@ -1,0 +1,81 @@
+diff --git a/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java b/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
+index 0a02a87..c3c1e3d 100644
+--- a/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
++++ b/shopping-service/shopping-provider/src/main/java/com/gpmall/shopping/services/CartServiceImpl.java
+@@ -16,6 +16,7 @@ import org.redisson.api.RMap;
+ import org.redisson.api.RedissonClient;
+ import org.springframework.beans.factory.annotation.Autowired;
+ 
++import java.math.BigDecimal;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+@@ -45,16 +46,12 @@ public class CartServiceImpl implements ICartService {
+     @Override
+     public CartListByIdResponse getCartListById(CartListByIdRequest request) {
+         CartListByIdResponse response=new CartListByIdResponse();
+-        List<CartProductDto> productDtos=new ArrayList<>();
+         response.setCode(ShoppingRetCode.SUCCESS.getCode());
+         response.setMsg(ShoppingRetCode.SUCCESS.getMessage());
+         try{
+             Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
+-            items.values().forEach(obj ->{
+-               CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
+-               productDtos.add(cartProductDto);
+-            });
+-            response.setCartProductDtos(productDtos);
++            CartSummary cartSummary = buildCartSummary(items);
++            response.setCartProductDtos(cartSummary.getCartProductDtos());
+         }catch (Exception e){
+             log.error("CartServiceImpl.getCartListById Occur Exception :"+e);
+             ExceptionProcessorUtils.wrapperHandlerException(response,e);
+@@ -190,10 +187,49 @@ public class CartServiceImpl implements ICartService {
+         return response;
+     }
+ 
++    private CartSummary buildCartSummary(Map<Object,Object> items) {
++        List<CartProductDto> productDtos=new ArrayList<>(items.size());
++        long totalProductNum = 0L;
++        BigDecimal totalPrice = BigDecimal.ZERO;
++        for (Object obj : items.values()) {
++            CartProductDto cartProductDto = JSONObject.parseObject(obj.toString(),CartProductDto.class);
++            productDtos.add(cartProductDto);
++            long productNum = cartProductDto.getProductNum()==null?0L:cartProductDto.getProductNum();
++            BigDecimal salePrice = cartProductDto.getSalePrice()==null?BigDecimal.ZERO:cartProductDto.getSalePrice();
++            totalProductNum += productNum;
++            totalPrice = totalPrice.add(salePrice.multiply(BigDecimal.valueOf(productNum)));
++        }
++        return new CartSummary(productDtos,totalProductNum,totalPrice);
++    }
++
+     private String generatorCartItemKey(long userId){
+         StringBuilder sb=new StringBuilder(GlobalConstants.CART_ITEM_CACHE_PREFIX);
+         sb.append(":").append(userId);
+         return sb.toString();
+     }
+ 
++    private static class CartSummary {
++        private final List<CartProductDto> cartProductDtos;
++        private final long totalProductNum;
++        private final BigDecimal totalPrice;
++
++        private CartSummary(List<CartProductDto> cartProductDtos, long totalProductNum, BigDecimal totalPrice) {
++            this.cartProductDtos = cartProductDtos;
++            this.totalProductNum = totalProductNum;
++            this.totalPrice = totalPrice;
++        }
++
++        private List<CartProductDto> getCartProductDtos() {
++            return cartProductDtos;
++        }
++
++        private long getTotalProductNum() {
++            return totalProductNum;
++        }
++
++        private BigDecimal getTotalPrice() {
++            return totalPrice;
++        }
++    }
++
+ }
