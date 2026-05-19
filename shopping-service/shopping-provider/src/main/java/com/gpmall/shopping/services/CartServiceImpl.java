@@ -16,6 +16,7 @@ import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -44,20 +45,36 @@ public class CartServiceImpl implements ICartService {
      */
     @Override
     public CartListByIdResponse getCartListById(CartListByIdRequest request) {
-        CartListByIdResponse response=new CartListByIdResponse();
-        List<CartProductDto> productDtos=new ArrayList<>();
+        CartListByIdResponse response = new CartListByIdResponse();
+        List<CartProductDto> productDtos = new ArrayList<>();
         response.setCode(ShoppingRetCode.SUCCESS.getCode());
         response.setMsg(ShoppingRetCode.SUCCESS.getMessage());
-        try{
-            Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
-            items.values().forEach(obj ->{
-               CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
-               productDtos.add(cartProductDto);
-            });
+        try {
+            Map<Object, Object> items = redissonClient.getMap(generatorCartItemKey(request.getUserId()));
+            BigDecimal checkPrice = BigDecimal.ZERO;
+            long checkNum = 0L;
+            long totalNum = 0L;
+            for (Object obj : items.values()) {
+                CartProductDto cartProductDto = JSONObject.parseObject(obj.toString(), CartProductDto.class);
+                productDtos.add(cartProductDto);
+                Long productNum = cartProductDto.getProductNum();
+                long num = productNum != null ? productNum : 0L;
+                totalNum += num;
+                if ("true".equals(cartProductDto.getChecked())) {
+                    checkNum += num;
+                    BigDecimal salePrice = cartProductDto.getSalePrice();
+                    if (salePrice != null) {
+                        checkPrice = checkPrice.add(salePrice.multiply(BigDecimal.valueOf(num)));
+                    }
+                }
+            }
             response.setCartProductDtos(productDtos);
-        }catch (Exception e){
-            log.error("CartServiceImpl.getCartListById Occur Exception :"+e);
-            ExceptionProcessorUtils.wrapperHandlerException(response,e);
+            response.setCheckPrice(checkPrice);
+            response.setCheckNum(checkNum);
+            response.setTotalNum(totalNum);
+        } catch (Exception e) {
+            log.error("CartServiceImpl.getCartListById Occur Exception :" + e);
+            ExceptionProcessorUtils.wrapperHandlerException(response, e);
         }
         return response;
     }

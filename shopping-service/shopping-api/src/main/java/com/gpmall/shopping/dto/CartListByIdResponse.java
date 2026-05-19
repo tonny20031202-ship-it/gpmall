@@ -3,6 +3,7 @@ package com.gpmall.shopping.dto;
 import com.gpmall.commons.result.AbstractResponse;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -15,4 +16,10 @@ import java.util.List;
 public class CartListByIdResponse extends AbstractResponse {
 
     private List<CartProductDto> cartProductDtos;
+
+    private BigDecimal checkPrice;
+
+    private Long checkNum;
+
+    private Long totalNum;
 }
