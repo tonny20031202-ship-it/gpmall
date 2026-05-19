@@ -1,7 +1,6 @@
 package com.gpmall.shopping.services;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.gpmall.shopping.ICartService;
 import com.gpmall.shopping.constant.GlobalConstants;
 import com.gpmall.shopping.constants.ShoppingRetCode;
@@ -16,6 +15,7 @@ import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,15 +46,20 @@ public class CartServiceImpl implements ICartService {
     public CartListByIdResponse getCartListById(CartListByIdRequest request) {
         CartListByIdResponse response=new CartListByIdResponse();
         List<CartProductDto> productDtos=new ArrayList<>();
+        BigDecimal totalPrice = BigDecimal.ZERO;
         response.setCode(ShoppingRetCode.SUCCESS.getCode());
         response.setMsg(ShoppingRetCode.SUCCESS.getMessage());
         try{
             Map<Object,Object> items=redissonClient.getMap(generatorCartItemKey(request.getUserId()));
-            items.values().forEach(obj ->{
-               CartProductDto cartProductDto= JSONObject.parseObject(obj.toString(),CartProductDto.class);
+            for(Object obj : items.values()){
+               CartProductDto cartProductDto= JSON.parseObject(obj.toString(),CartProductDto.class);
                productDtos.add(cartProductDto);
-            });
+               if("true".equals(cartProductDto.getChecked())){
+                   totalPrice = totalPrice.add(cartProductDto.getSalePrice().multiply(BigDecimal.valueOf(cartProductDto.getProductNum())));
+               }
+            }
             response.setCartProductDtos(productDtos);
+            response.setTotalPrice(totalPrice);
         }catch (Exception e){
             log.error("CartServiceImpl.getCartListById Occur Exception :"+e);
             ExceptionProcessorUtils.wrapperHandlerException(response,e);
