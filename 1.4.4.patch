@@ -1,0 +1,232 @@
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java b/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
+index f5b5ca1..7fe5da2 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
+@@ -5,22 +5,42 @@ package com.gpmall.order.services;/**
+ import com.gpmall.order.OrderCoreService;
+ import com.gpmall.order.biz.TransOutboundInvoker;
+ import com.gpmall.order.biz.context.AbsTransHandlerContext;
++import com.gpmall.order.biz.context.CreateOrderContext;
++import com.gpmall.order.biz.context.TransHandlerContext;
+ import com.gpmall.order.biz.factory.OrderProcessPipelineFactory;
++import com.gpmall.order.biz.handler.TransHandler;
+ import com.gpmall.order.constant.OrderRetCode;
+ import com.gpmall.order.constants.OrderConstants;
+ import com.gpmall.order.dal.entitys.Order;
++import com.gpmall.order.dal.entitys.OrderItem;
++import com.gpmall.order.dal.entitys.Stock;
+ import com.gpmall.order.dal.persistence.OrderItemMapper;
+ import com.gpmall.order.dal.persistence.OrderMapper;
+ import com.gpmall.order.dal.persistence.OrderShippingMapper;
++import com.gpmall.order.dal.persistence.StockMapper;
+ import com.gpmall.order.dto.*;
+ import com.gpmall.order.utils.ExceptionProcessorUtils;
++import com.gpmall.order.utils.GlobalIdGeneratorUtil;
+ import lombok.extern.slf4j.Slf4j;
+ import org.apache.dubbo.config.annotation.Service;
++import org.springframework.beans.BeansException;
+ import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.context.ApplicationContext;
++import org.springframework.context.ApplicationContextAware;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.TransactionDefinition;
++import org.springframework.transaction.TransactionStatus;
++import org.springframework.transaction.annotation.Propagation;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionCallback;
++import org.springframework.transaction.support.TransactionTemplate;
+ import tk.mybatis.mapper.entity.Example;
+ 
++import java.math.BigDecimal;
++import java.util.ArrayList;
+ import java.util.Date;
++import java.util.List;
++import java.util.Objects;
+ 
+ /**
+  * 腾讯课堂搜索【咕泡学院】
+@@ -30,7 +50,7 @@ import java.util.Date;
+  */
+ @Slf4j
+ @Service(cluster = "failfast")
+-public class OrderCoreServiceImpl implements OrderCoreService {
++public class OrderCoreServiceImpl implements OrderCoreService, ApplicationContextAware {
+ 
+ 	@Autowired
+ 	OrderMapper orderMapper;
+@@ -47,6 +67,21 @@ public class OrderCoreServiceImpl implements OrderCoreService {
+     @Autowired
+     OrderCoreService orderCoreService;
+ 
++	@Autowired
++	StockMapper stockMapper;
++
++	@Autowired
++	GlobalIdGeneratorUtil globalIdGeneratorUtil;
++
++	@Autowired
++	PlatformTransactionManager transactionManager;
++
++	private ApplicationContext applicationContext;
++
++	@Override
++	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
++		this.applicationContext = applicationContext;
++	}
+ 
+ 	/**
+ 	 * 创建订单的处理流程
+@@ -58,10 +93,43 @@ public class OrderCoreServiceImpl implements OrderCoreService {
+ 	public CreateOrderResponse createOrder(CreateOrderRequest request) {
+ 		CreateOrderResponse response = new CreateOrderResponse();
+ 		try {
+-			TransOutboundInvoker invoker = orderProcessPipelineFactory.build(request);
+-			invoker.start(); //启动流程（pipeline来处理）
+-			AbsTransHandlerContext context = invoker.getContext();
+-			response = (CreateOrderResponse) context.getConvert().convertCtx2Respond(context);
++			// 构建上下文
++			CreateOrderContext context = new CreateOrderContext();
++			context.setAddressId(request.getAddressId());
++			context.setCartProductDtoList(request.getCartProductDtoList());
++			context.setOrderTotal(request.getOrderTotal());
++			context.setStreetName(request.getStreetName());
++			context.setTel(request.getTel());
++			context.setUserId(request.getUserId());
++			context.setUserName(request.getUserName());
++			context.setUniqueKey(request.getUniqueKey());
++
++			// 使用事务模板执行核心流程
++			TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
++			transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
++
++			String orderId = transactionTemplate.execute(status -> {
++				try {
++					// 执行验证、库存扣减、订单创建
++					executeValidate(context);
++					executeSubStock(context);
++					executeInitOrder(context);
++					return context.getOrderId();
++				} catch (Exception e) {
++					// 异常时回滚事务
++					status.setRollbackOnly();
++					throw e;
++				}
++			});
++
++			// 构造响应
++			response.setOrderId(orderId);
++			response.setCode(OrderRetCode.SUCCESS.getCode());
++			response.setMsg(OrderRetCode.SUCCESS.getMessage());
++
++			// 异步执行后续处理（清空购物车、物流、发消息等）
++			executePostProcess(context);
++
+ 		} catch (Exception e) {
+ 			log.error("OrderCoreServiceImpl.createOrder Occur Exception :" + e);
+ 			ExceptionProcessorUtils.wrapperHandlerException(response, e);
+@@ -69,6 +137,105 @@ public class OrderCoreServiceImpl implements OrderCoreService {
+ 		return response;
+ 	}
+ 
++	/**
++	 * 执行验证
++	 */
++	private void executeValidate(CreateOrderContext context) {
++		TransHandler validateHandler = applicationContext.getBean("validateHandler", TransHandler.class);
++		validateHandler.handle(context);
++	}
++
++	/**
++	 * 执行库存扣减 - 注意：移除了 @Transactional，直接在当前事务中执行
++	 */
++	private void executeSubStock(CreateOrderContext context) {
++		List<CartProductDto> cartProductDtoList = context.getCartProductDtoList();
++		List<Long> itemIds = new ArrayList<>();
++		for (CartProductDto dto : cartProductDtoList) {
++			itemIds.add(dto.getProductId());
++		}
++		itemIds.sort(Long::compareTo);
++
++		List<Stock> list = stockMapper.findStocksForUpdate(itemIds);
++		if (list == null || list.isEmpty()) {
++			throw new com.gpmall.commons.tool.exception.BizException("库存未初始化");
++		}
++		if (list.size() != itemIds.size()) {
++			throw new com.gpmall.commons.tool.exception.BizException("有商品未初始化库存");
++		}
++
++		for (Stock stock : list) {
++			for (CartProductDto one : cartProductDtoList) {
++				if (Objects.equals(one.getProductId(), stock.getItemId())) {
++					if (stock.getStockCount() < one.getProductNum()) {
++						throw new com.gpmall.commons.tool.exception.BizException(stock.getItemId() + "库存不足");
++					}
++					stock.setLockCount(one.getProductNum().intValue());
++					stock.setStockCount(-one.getProductNum());
++					stockMapper.updateStock(stock);
++					break;
++				}
++			}
++		}
++		context.setBuyProductIds(itemIds);
++	}
++
++	/**
++	 * 执行订单初始化 - 注意：移除了 @Transactional(propagation = Propagation.REQUIRES_NEW)
++	 * 直接在当前事务中执行
++	 */
++	private void executeInitOrder(CreateOrderContext context) {
++		log.info("begin executeInitOrder :context:" + context);
++		Order order = new Order();
++		String orderId = globalIdGeneratorUtil.getNextSeq("ORDER_ID", 1);
++		order.setOrderId(orderId);
++		order.setUserId(context.getUserId());
++		order.setBuyerNick(context.getBuyerNickName());
++		order.setPayment(context.getOrderTotal());
++		order.setCreateTime(new Date());
++		order.setUpdateTime(new Date());
++		order.setStatus(OrderConstants.ORDER_STATUS_INIT);
++		orderMapper.insert(order);
++
++		List<Long> buyProductIds = new ArrayList<>();
++		for (CartProductDto cartProductDto : context.getCartProductDtoList()) {
++			OrderItem orderItem = new OrderItem();
++			orderItem.setId(globalIdGeneratorUtil.getNextSeq("ORDER_ITEM_ID", 1));
++			orderItem.setItemId(cartProductDto.getProductId());
++			orderItem.setOrderId(orderId);
++			orderItem.setNum(cartProductDto.getProductNum().intValue());
++			orderItem.setPrice(cartProductDto.getSalePrice().doubleValue());
++			orderItem.setTitle(cartProductDto.getProductName());
++			orderItem.setPicPath(cartProductDto.getProductImg());
++			orderItem.setTotalFee(cartProductDto.getSalePrice().multiply(BigDecimal.valueOf(cartProductDto.getProductNum())).doubleValue());
++			buyProductIds.add(cartProductDto.getProductId());
++			orderItem.setStatus(1);
++			orderItemMapper.insert(orderItem);
++		}
++		context.setOrderId(orderId);
++		context.setBuyProductIds(buyProductIds);
++	}
++
++	/**
++	 * 执行后续处理（异步）
++	 */
++	private void executePostProcess(CreateOrderContext context) {
++		try {
++			// 物流、清空购物车、发消息等后续处理
++			TransHandler logisticalHandler = applicationContext.getBean("logisticalHandler", TransHandler.class);
++			TransHandler clearCartHandler = applicationContext.getBean("clearCartItemHandler", TransHandler.class);
++			TransHandler sendMessageHandler = applicationContext.getBean("sendMessageHandler", TransHandler.class);
++
++			// 异步执行（简单起见，这里直接顺序执行）
++			logisticalHandler.handle(context);
++			clearCartHandler.handle(context);
++			sendMessageHandler.handle(context);
++		} catch (Exception e) {
++			log.error("executePostProcess error", e);
++			// 后续处理异常不影响主流程
++		}
++	}
++
+ 	/**
+ 	 * 取消订单
+ 	 *
