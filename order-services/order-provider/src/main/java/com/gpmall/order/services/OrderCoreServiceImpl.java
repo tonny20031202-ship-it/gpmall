@@ -55,6 +55,7 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 	 * @return
 	 */
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public CreateOrderResponse createOrder(CreateOrderRequest request) {
 		CreateOrderResponse response = new CreateOrderResponse();
 		try {
@@ -65,6 +66,7 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 		} catch (Exception e) {
 			log.error("OrderCoreServiceImpl.createOrder Occur Exception :" + e);
 			ExceptionProcessorUtils.wrapperHandlerException(response, e);
+			org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
 		}
 		return response;
 	}
