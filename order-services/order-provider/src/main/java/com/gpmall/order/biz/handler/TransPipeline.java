@@ -5,6 +5,8 @@ package com.gpmall.order.biz.handler;/**
 import com.gpmall.order.biz.TransOutboundInvoker;
 import com.gpmall.order.biz.handler.TransHandler;
 
+import java.util.List;
+
 /**
  * 腾讯课堂搜索【咕泡学院】
  * 官网：www.gupaoedu.com
@@ -24,4 +26,6 @@ public interface TransPipeline extends TransOutboundInvoker {
      * @param handlers
      */
     void addLast(TransHandler ... handlers);
+
+    List<TransHandler> getHandlers();
 }

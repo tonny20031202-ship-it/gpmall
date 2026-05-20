@@ -1,7 +1,9 @@
 package com.gpmall.order.biz.context;
 
 import com.gpmall.order.biz.convert.TransConvert;
+import com.gpmall.order.dal.persistence.StockMapper;
 import lombok.Data;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 腾讯课堂搜索【咕泡学院】
@@ -17,5 +19,7 @@ public abstract class AbsTransHandlerContext implements TransHandlerContext {
 
     private TransConvert convert = null;
 
+    private TransactionTemplate transactionTemplate;
 
+    private StockMapper stockMapper;
 }

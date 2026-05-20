@@ -5,7 +5,9 @@ package com.gpmall.order.services;/**
 import com.gpmall.order.OrderCoreService;
 import com.gpmall.order.biz.TransOutboundInvoker;
 import com.gpmall.order.biz.context.AbsTransHandlerContext;
+import com.gpmall.order.biz.context.TransHandlerContext;
 import com.gpmall.order.biz.factory.OrderProcessPipelineFactory;
+import com.gpmall.order.biz.handler.TransHandler;
 import com.gpmall.order.constant.OrderRetCode;
 import com.gpmall.order.constants.OrderConstants;
 import com.gpmall.order.dal.entitys.Order;
@@ -18,9 +20,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tk.mybatis.mapper.entity.Example;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * 腾讯课堂搜索【咕泡学院】
@@ -42,11 +46,16 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 	OrderShippingMapper orderShippingMapper;
 
 	@Autowired
-	OrderProcessPipelineFactory orderProcessPipelineFactory;
+    OrderProcessPipelineFactory orderProcessPipelineFactory;
 
     @Autowired
     OrderCoreService orderCoreService;
 
+    @Autowired
+    TransactionTemplate transactionTemplate;
+
+    @Autowired
+    com.gpmall.order.dal.persistence.StockMapper stockMapper;
 
 	/**
 	 * 创建订单的处理流程
@@ -59,8 +68,30 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 		CreateOrderResponse response = new CreateOrderResponse();
 		try {
 			TransOutboundInvoker invoker = orderProcessPipelineFactory.build(request);
-			invoker.start(); //启动流程（pipeline来处理）
-			AbsTransHandlerContext context = invoker.getContext();
+			AbsTransHandlerContext context = (AbsTransHandlerContext) invoker.getContext();
+			context.setTransactionTemplate(transactionTemplate);
+			context.setStockMapper(stockMapper);
+			List<TransHandler> handlers = context.getHandlers();
+			for (int i = 0; i < handlers.size(); i++) {
+				TransHandler handler = handlers.get(i);
+				String name = handler.getClass().getSimpleName();
+				if ("ValidateHandler".equals(name) || "ClearCartItemHandler".equals(name) || "SendMessageHandler".equals(name)) {
+					handler.handle(context);
+				} else {
+					final int next = i + 1;
+					transactionTemplate.executeWithoutResult(status -> {
+						for (int j = next; j < handlers.size(); j++) {
+							TransHandler h = handlers.get(j);
+							String hName = h.getClass().getSimpleName();
+							if ("ValidateHandler".equals(hName) || "ClearCartItemHandler".equals(hName) || "SendMessageHandler".equals(hName)) {
+								break;
+							}
+							h.handle(context);
+						}
+					});
+					break;
+				}
+			}
 			response = (CreateOrderResponse) context.getConvert().convertCtx2Respond(context);
 		} catch (Exception e) {
 			log.error("OrderCoreServiceImpl.createOrder Occur Exception :" + e);

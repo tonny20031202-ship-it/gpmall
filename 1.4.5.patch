@@ -1,0 +1,275 @@
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/biz/context/AbsTransHandlerContext.java b/order-services/order-provider/src/main/java/com/gpmall/order/biz/context/AbsTransHandlerContext.java
+index 655256f..67038bd 100755
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/biz/context/AbsTransHandlerContext.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/biz/context/AbsTransHandlerContext.java
+@@ -1,7 +1,9 @@
+ package com.gpmall.order.biz.context;
+ 
+ import com.gpmall.order.biz.convert.TransConvert;
++import com.gpmall.order.dal.persistence.StockMapper;
+ import lombok.Data;
++import org.springframework.transaction.support.TransactionTemplate;
+ 
+ /**
+  * 腾讯课堂搜索【咕泡学院】
+@@ -17,5 +19,7 @@ public abstract class AbsTransHandlerContext implements TransHandlerContext {
+ 
+     private TransConvert convert = null;
+ 
++    private TransactionTemplate transactionTemplate;
+ 
++    private StockMapper stockMapper;
+ }
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/DefaultTransPipeline.java b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/DefaultTransPipeline.java
+index 2ce3580..90b0dde 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/DefaultTransPipeline.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/DefaultTransPipeline.java
+@@ -7,6 +7,9 @@ import com.gpmall.order.biz.context.TransHandlerContext;
+ import com.gpmall.order.constant.OrderRetCode;
+ import lombok.extern.slf4j.Slf4j;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ /**
+  * 腾讯课堂搜索【咕泡学院】
+  * 官网：www.gupaoedu.com
+@@ -23,6 +26,8 @@ public class DefaultTransPipeline implements TransPipeline{
+ 
+     private TransHandlerContext context = null;
+ 
++    private List<TransHandler> handlerList = new ArrayList<>();
++
+     public DefaultTransPipeline(TransHandlerContext context) {
+         setContext(context);
+         tail = head;
+@@ -40,6 +45,7 @@ public class DefaultTransPipeline implements TransPipeline{
+             node.setNext(pre);
+ 
+             pre = node;
++            handlerList.add(0, handler);
+         }
+ 
+         head.setNext(pre);
+@@ -57,6 +63,7 @@ public class DefaultTransPipeline implements TransPipeline{
+             node.setHandler(handler);
+             next.setNext(node);
+             next = node;
++            handlerList.add(handler);
+         }
+ 
+         tail = next;
+@@ -85,4 +92,9 @@ public class DefaultTransPipeline implements TransPipeline{
+     public void setContext(TransHandlerContext context) {
+         this.context = context;
+     }
++
++    @Override
++    public List<TransHandler> getHandlers() {
++        return handlerList;
++    }
+ }
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/InitOrderHandler.java b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/InitOrderHandler.java
+index c4bfa1e..35adfcc 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/InitOrderHandler.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/InitOrderHandler.java
+@@ -17,22 +17,12 @@ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.dao.DuplicateKeyException;
+ import org.springframework.stereotype.Component;
+-import org.springframework.transaction.annotation.Propagation;
+-import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.math.BigDecimal;
+ import java.util.ArrayList;
+ import java.util.Date;
+ import java.util.List;
+ 
+-/**
+- * 腾讯课堂搜索【咕泡学院】
+- * 官网：www.gupaoedu.com
+- * 风骚的Mic 老师
+- * create-date: 2019/8/1-下午5:01
+- * 初始化订单
+- */
+-
+ @Slf4j
+ @Component
+ public class InitOrderHandler extends AbstractTransHandler {
+@@ -61,8 +51,6 @@ public class InitOrderHandler extends AbstractTransHandler {
+         return false;
+     }
+ 
+-    //TODO: 事务这里还没测试过， 大家看到这段代码的时候测试一下，如果有问题记得改
+-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+     @Override
+     public boolean handle(TransHandlerContext context) {
+         log.info("begin InitOrderHandler :context:"+context);
+@@ -77,7 +65,7 @@ public class InitOrderHandler extends AbstractTransHandler {
+             order.setCreateTime(new Date());
+             order.setUpdateTime(new Date());
+             order.setStatus(OrderConstants.ORDER_STATUS_INIT);
+-            orderMapper.insert(order); //保存订单
++            orderMapper.insert(order);
+             List<Long> buyProductIds=new ArrayList<>();
+             createOrderContext.getCartProductDtoList().parallelStream().forEach(cartProductDto -> {
+                 OrderItem orderItem = new OrderItem();
+@@ -90,7 +78,6 @@ public class InitOrderHandler extends AbstractTransHandler {
+                 orderItem.setPicPath(cartProductDto.getProductImg());
+                 orderItem.setTotalFee(cartProductDto.getSalePrice().multiply(BigDecimal.valueOf(cartProductDto.getProductNum())).doubleValue());
+                 buyProductIds.add(cartProductDto.getProductId());
+-                //已锁定库存
+                 orderItem.setStatus(1);
+                 orderItemMapper.insert(orderItem);
+             });
+@@ -105,4 +92,4 @@ public class InitOrderHandler extends AbstractTransHandler {
+         }
+         return true;
+     }
+-}
++}
+\ No newline at end of file
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/SubStockHandler.java b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/SubStockHandler.java
+index ba24c97..211d356 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/SubStockHandler.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/SubStockHandler.java
+@@ -11,7 +11,7 @@ import com.gpmall.order.dto.CartProductDto;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.stereotype.Component;
+-import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
+ 
+ import java.util.Collections;
+ import java.util.Comparator;
+@@ -27,8 +27,6 @@ import java.util.stream.Collectors;
+ @Component
+ @Slf4j
+ public class SubStockHandler extends AbstractTransHandler {
+-	@Autowired
+-	StockMapper stockMapper;
+ 	@Autowired
+ 	OrderItemMapper orderItemMapper;
+ 
+@@ -38,15 +36,12 @@ public class SubStockHandler extends AbstractTransHandler {
+ 	}
+ 
+ 	@Override
+-	@Transactional
+ 	public boolean handle(TransHandlerContext context) {
+ 		CreateOrderContext createOrderContext = (CreateOrderContext) context;
++		StockMapper stockMapper = createOrderContext.getStockMapper();
+ 		List<CartProductDto> cartProductDtoList = createOrderContext.getCartProductDtoList();
+-		//item_ids
+ 		List<Long> itemIds = createOrderContext.getBuyProductIds();
+-		//排序
+ 		itemIds.sort(Long::compareTo);
+-		//一次性锁 ids
+ 		List<Stock> list = stockMapper.findStocksForUpdate(itemIds);
+ 		if(list==null||list.isEmpty()){
+ 			throw new BaseBusinessException("库存未初始化");
+@@ -63,7 +58,6 @@ public class SubStockHandler extends AbstractTransHandler {
+ 					}
+ 					stock.setLockCount(one.getProductNum().intValue());
+ 					stock.setStockCount(-one.getProductNum());
+-					//更改库存状态
+ 					stockMapper.updateStock(stock);
+ 					return;
+ 				}
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/TransPipeline.java b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/TransPipeline.java
+index 28489c8..cfae37f 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/TransPipeline.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/biz/handler/TransPipeline.java
+@@ -5,6 +5,8 @@ package com.gpmall.order.biz.handler;/**
+ import com.gpmall.order.biz.TransOutboundInvoker;
+ import com.gpmall.order.biz.handler.TransHandler;
+ 
++import java.util.List;
++
+ /**
+  * 腾讯课堂搜索【咕泡学院】
+  * 官网：www.gupaoedu.com
+@@ -24,4 +26,6 @@ public interface TransPipeline extends TransOutboundInvoker {
+      * @param handlers
+      */
+     void addLast(TransHandler ... handlers);
++
++    List<TransHandler> getHandlers();
+ }
+diff --git a/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java b/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
+index f5b5ca1..4716ee4 100644
+--- a/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
++++ b/order-services/order-provider/src/main/java/com/gpmall/order/services/OrderCoreServiceImpl.java
+@@ -5,7 +5,9 @@ package com.gpmall.order.services;/**
+ import com.gpmall.order.OrderCoreService;
+ import com.gpmall.order.biz.TransOutboundInvoker;
+ import com.gpmall.order.biz.context.AbsTransHandlerContext;
++import com.gpmall.order.biz.context.TransHandlerContext;
+ import com.gpmall.order.biz.factory.OrderProcessPipelineFactory;
++import com.gpmall.order.biz.handler.TransHandler;
+ import com.gpmall.order.constant.OrderRetCode;
+ import com.gpmall.order.constants.OrderConstants;
+ import com.gpmall.order.dal.entitys.Order;
+@@ -18,9 +20,11 @@ import lombok.extern.slf4j.Slf4j;
+ import org.apache.dubbo.config.annotation.Service;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
+ import tk.mybatis.mapper.entity.Example;
+ 
+ import java.util.Date;
++import java.util.List;
+ 
+ /**
+  * 腾讯课堂搜索【咕泡学院】
+@@ -42,11 +46,16 @@ public class OrderCoreServiceImpl implements OrderCoreService {
+ 	OrderShippingMapper orderShippingMapper;
+ 
+ 	@Autowired
+-	OrderProcessPipelineFactory orderProcessPipelineFactory;
++    OrderProcessPipelineFactory orderProcessPipelineFactory;
+ 
+     @Autowired
+     OrderCoreService orderCoreService;
+ 
++    @Autowired
++    TransactionTemplate transactionTemplate;
++
++    @Autowired
++    com.gpmall.order.dal.persistence.StockMapper stockMapper;
+ 
+ 	/**
+ 	 * 创建订单的处理流程
+@@ -59,8 +68,30 @@ public class OrderCoreServiceImpl implements OrderCoreService {
+ 		CreateOrderResponse response = new CreateOrderResponse();
+ 		try {
+ 			TransOutboundInvoker invoker = orderProcessPipelineFactory.build(request);
+-			invoker.start(); //启动流程（pipeline来处理）
+-			AbsTransHandlerContext context = invoker.getContext();
++			AbsTransHandlerContext context = (AbsTransHandlerContext) invoker.getContext();
++			context.setTransactionTemplate(transactionTemplate);
++			context.setStockMapper(stockMapper);
++			List<TransHandler> handlers = context.getHandlers();
++			for (int i = 0; i < handlers.size(); i++) {
++				TransHandler handler = handlers.get(i);
++				String name = handler.getClass().getSimpleName();
++				if ("ValidateHandler".equals(name) || "ClearCartItemHandler".equals(name) || "SendMessageHandler".equals(name)) {
++					handler.handle(context);
++				} else {
++					final int next = i + 1;
++					transactionTemplate.executeWithoutResult(status -> {
++						for (int j = next; j < handlers.size(); j++) {
++							TransHandler h = handlers.get(j);
++							String hName = h.getClass().getSimpleName();
++							if ("ValidateHandler".equals(hName) || "ClearCartItemHandler".equals(hName) || "SendMessageHandler".equals(hName)) {
++								break;
++							}
++							h.handle(context);
++						}
++					});
++					break;
++				}
++			}
+ 			response = (CreateOrderResponse) context.getConvert().convertCtx2Respond(context);
+ 		} catch (Exception e) {
+ 			log.error("OrderCoreServiceImpl.createOrder Occur Exception :" + e);

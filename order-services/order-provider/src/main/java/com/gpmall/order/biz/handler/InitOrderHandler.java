@@ -17,21 +17,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-
-/**
- * 腾讯课堂搜索【咕泡学院】
- * 官网：www.gupaoedu.com
- * 风骚的Mic 老师
- * create-date: 2019/8/1-下午5:01
- * 初始化订单
- */
 
 @Slf4j
 @Component
@@ -61,8 +51,6 @@ public class InitOrderHandler extends AbstractTransHandler {
         return false;
     }
 
-    //TODO: 事务这里还没测试过， 大家看到这段代码的时候测试一下，如果有问题记得改
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public boolean handle(TransHandlerContext context) {
         log.info("begin InitOrderHandler :context:"+context);
@@ -77,7 +65,7 @@ public class InitOrderHandler extends AbstractTransHandler {
             order.setCreateTime(new Date());
             order.setUpdateTime(new Date());
             order.setStatus(OrderConstants.ORDER_STATUS_INIT);
-            orderMapper.insert(order); //保存订单
+            orderMapper.insert(order);
             List<Long> buyProductIds=new ArrayList<>();
             createOrderContext.getCartProductDtoList().parallelStream().forEach(cartProductDto -> {
                 OrderItem orderItem = new OrderItem();
@@ -90,7 +78,6 @@ public class InitOrderHandler extends AbstractTransHandler {
                 orderItem.setPicPath(cartProductDto.getProductImg());
                 orderItem.setTotalFee(cartProductDto.getSalePrice().multiply(BigDecimal.valueOf(cartProductDto.getProductNum())).doubleValue());
                 buyProductIds.add(cartProductDto.getProductId());
-                //已锁定库存
                 orderItem.setStatus(1);
                 orderItemMapper.insert(orderItem);
             });

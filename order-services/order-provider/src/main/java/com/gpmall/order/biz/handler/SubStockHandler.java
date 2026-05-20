@@ -11,7 +11,7 @@ import com.gpmall.order.dto.CartProductDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -28,8 +28,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SubStockHandler extends AbstractTransHandler {
 	@Autowired
-	StockMapper stockMapper;
-	@Autowired
 	OrderItemMapper orderItemMapper;
 
 	@Override
@@ -38,15 +36,12 @@ public class SubStockHandler extends AbstractTransHandler {
 	}
 
 	@Override
-	@Transactional
 	public boolean handle(TransHandlerContext context) {
 		CreateOrderContext createOrderContext = (CreateOrderContext) context;
+		StockMapper stockMapper = createOrderContext.getStockMapper();
 		List<CartProductDto> cartProductDtoList = createOrderContext.getCartProductDtoList();
-		//item_ids
 		List<Long> itemIds = createOrderContext.getBuyProductIds();
-		//排序
 		itemIds.sort(Long::compareTo);
-		//一次性锁 ids
 		List<Stock> list = stockMapper.findStocksForUpdate(itemIds);
 		if(list==null||list.isEmpty()){
 			throw new BaseBusinessException("库存未初始化");
@@ -63,7 +58,6 @@ public class SubStockHandler extends AbstractTransHandler {
 					}
 					stock.setLockCount(one.getProductNum().intValue());
 					stock.setStockCount(-one.getProductNum());
-					//更改库存状态
 					stockMapper.updateStock(stock);
 					return;
 				}

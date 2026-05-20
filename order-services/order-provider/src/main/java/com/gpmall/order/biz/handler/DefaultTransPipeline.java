@@ -7,6 +7,9 @@ import com.gpmall.order.biz.context.TransHandlerContext;
 import com.gpmall.order.constant.OrderRetCode;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 腾讯课堂搜索【咕泡学院】
  * 官网：www.gupaoedu.com
@@ -22,6 +25,8 @@ public class DefaultTransPipeline implements TransPipeline{
     private TransHandlerNode head = new TransHandlerNode();
 
     private TransHandlerContext context = null;
+
+    private List<TransHandler> handlerList = new ArrayList<>();
 
     public DefaultTransPipeline(TransHandlerContext context) {
         setContext(context);
@@ -40,6 +45,7 @@ public class DefaultTransPipeline implements TransPipeline{
             node.setNext(pre);
 
             pre = node;
+            handlerList.add(0, handler);
         }
 
         head.setNext(pre);
@@ -57,6 +63,7 @@ public class DefaultTransPipeline implements TransPipeline{
             node.setHandler(handler);
             next.setNext(node);
             next = node;
+            handlerList.add(handler);
         }
 
         tail = next;
@@ -84,5 +91,10 @@ public class DefaultTransPipeline implements TransPipeline{
 
     public void setContext(TransHandlerContext context) {
         this.context = context;
+    }
+
+    @Override
+    public List<TransHandler> getHandlers() {
+        return handlerList;
     }
 }
