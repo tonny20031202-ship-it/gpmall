@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import tk.mybatis.mapper.entity.Example;
 
 import java.util.Date;
@@ -55,6 +56,7 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 	 * @return
 	 */
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public CreateOrderResponse createOrder(CreateOrderRequest request) {
 		CreateOrderResponse response = new CreateOrderResponse();
 		try {
@@ -65,6 +67,7 @@ public class OrderCoreServiceImpl implements OrderCoreService {
 		} catch (Exception e) {
 			log.error("OrderCoreServiceImpl.createOrder Occur Exception :" + e);
 			ExceptionProcessorUtils.wrapperHandlerException(response, e);
+			TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
 		}
 		return response;
 	}
